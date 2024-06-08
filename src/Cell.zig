@@ -198,3 +198,84 @@ pub const Color = union(enum) {
         }
     }
 };
+
+pub const PackedGrapheme = enum(u32) {
+    _,
+
+    pub fn init(bytes: []const u8) @This() {
+        var this: @This() = @enumFromInt(0);
+        @memcpy(std.mem.asBytes(&this)[0..bytes.len], bytes[0..]);
+        return this;
+    }
+
+    pub fn asBytes(self: @This()) [@sizeOf(u32)]u8 {
+        return std.mem.toBytes(@intFromEnum(self));
+    }
+};
+
+pub const Fingerprint = packed struct(u57) {
+    perfect_hash: bool = true,
+    fg: std.math.IntFittingRange(0, 16) = 16,
+    bg: std.math.IntFittingRange(0, 16) = 16,
+    ul: std.math.IntFittingRange(0, 16) = 16,
+    ul_style: std.math.IntFittingRange(0, std.meta.fields(Style.Underline).len) = 0,
+    bold: bool = false,
+    dim: bool = false,
+    italic: bool = false,
+    reverse: bool = false,
+    invisible: bool = false,
+    strikethrough: bool = false,
+    grapheme: PackedGrapheme = PackedGrapheme.init(" "),
+
+    pub const Scalar = u57;
+
+    pub fn asScalar(self: @This()) Scalar {
+        return @bitCast(self);
+    }
+};
+
+pub fn fingerprint(self: @This()) Fingerprint {
+    if (self.default) {
+        return .{};
+    }
+    if (std.meta.activeTag(self.style.fg) == .rgb or
+        std.meta.activeTag(self.style.bg) == .rgb or
+        std.meta.activeTag(self.style.ul) == .rgb)
+    {
+        return .{ .perfect_hash = false };
+    }
+    if (self.image) |_| {
+        return .{ .perfect_hash = false };
+    }
+    if (self.link.uri.len > 0 or self.link.params.len > 0) {
+        return .{ .perfect_hash = false };
+    }
+    if (self.char.width > @sizeOf(u32)) {
+        return .{ .perfect_hash = false };
+    }
+    return .{
+        .fg = switch (self.style.fg) {
+            .default => 16,
+            .index => |index| @intCast(index),
+            .rgb => unreachable,
+        },
+        .bg = switch (self.style.bg) {
+            .default => 16,
+            .index => |index| @intCast(index),
+            .rgb => unreachable,
+        },
+        .ul = switch (self.style.ul) {
+            .default => 16,
+            .index => |index| @intCast(index),
+            .rgb => unreachable,
+        },
+        .ul_style = @intFromEnum(self.style.ul_style),
+        .bold = self.style.bold,
+        .dim = self.style.dim,
+        .italic = self.style.italic,
+        .reverse = self.style.reverse,
+        .invisible = self.style.invisible,
+        .strikethrough = self.style.strikethrough,
+        .grapheme = PackedGrapheme.init(self.char.grapheme),
+    };
+}

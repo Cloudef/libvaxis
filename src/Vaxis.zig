@@ -341,6 +341,7 @@ pub fn render(self: *Vaxis, tty: AnyWriter) !void {
     var i: usize = 0;
     while (i < self.screen.buf.len) {
         const cell = self.screen.buf[i];
+
         const w = blk: {
             if (cell.char.width != 0) break :blk cell.char.width;
 
@@ -354,7 +355,6 @@ pub fn render(self: *Vaxis, tty: AnyWriter) !void {
             var j = i + 1;
             while (j < i + w) : (j += 1) {
                 if (j >= self.screen_last.buf.len) break;
-                self.screen_last.buf[j].skipped = true;
             }
             col += w;
             i += w;
@@ -364,10 +364,10 @@ pub fn render(self: *Vaxis, tty: AnyWriter) !void {
             col = 0;
             reposition = true;
         }
-        // If cell is the same as our last frame, we don't need to do
-        // anything
-        const last = self.screen_last.buf[i];
-        if (!self.refresh and last.eql(cell) and !last.skipped and cell.image == null) {
+
+        // If cell is the same as our last frame, we don't need to do anything
+        const fp = cell.fingerprint();
+        if (fp.perfect_hash and self.screen_last.buf[i].asScalar() == fp.asScalar()) {
             reposition = true;
             // Close any osc8 sequence we might be in before
             // repositioning
@@ -376,13 +376,13 @@ pub fn render(self: *Vaxis, tty: AnyWriter) !void {
             }
             continue;
         }
-        self.screen_last.buf[i].skipped = false;
+
         defer {
             cursor = cell.style;
             link = cell.link;
         }
         // Set this cell in the last frame
-        self.screen_last.writeCell(col, row, cell);
+        self.screen_last.writeFingeprint(col, row, fp);
 
         // reposition the cursor, if needed
         if (reposition) {
